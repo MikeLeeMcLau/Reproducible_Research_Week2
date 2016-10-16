@@ -1,0 +1,164 @@
+---
+title: "Reproducible_Research - Assignment"
+author: "Mike McLaughlin"
+date: "October 14, 2016"
+output: html_document
+---
+
+##Information regarding this document
+
+The below information is for the assignment during the second week of the class called:  Reproducible_Research
+
+The data is based on a set of data from a device such as a Up Jawbone, Fitbit, or Nike Fuelband. 
+
+The data was available on the class website and is broken up into 5 second intervals.   There appears to be about 53 days of data.
+
+
+
+###Step One - Load Libraries and download data.   Download data from class website.
+
+```{r download, echo=TRUE}
+#Clear information from memory
+rm(list=ls())
+#Load libraries
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lattice)
+
+  #Insure directory for class is available. 
+  rwd <- "C:/2016/Mike_Classes/Reproducible_Research/Working Directory/"
+  #If directory is not available create directory.
+  if(!file.exists(rwd)){dir.create(rwd)}
+  #Set working directory.
+  setwd(rwd)
+  #Create a variable with the directory to download files.
+  assignData <- "./assignmentData"
+  #Check that if directory exists.   If not create directory.
+  if(!file.exists(assignData)){dir.create(assignData)}
+  #Retrieve files and unzip into working directory.
+  url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+  filename <- paste(assignData,"/activity.zip", sep="")
+  download.file(url,filename)
+  unzip(filename)
+```
+
+###Step 2 Loading and Preprocessing the Data. 
+
+readActivity (DataFrame) - Data after download.   No changes.
+totalStepDAy (DataFrame) - Summarized readActivity by day.   Include total steps, mean steps and standard diviation.
+meanTotalSteps (numeric) - Mean Total Steps
+medianTotalSteps (numeric) - Median Total Steps
+
+
+```{R ReadData, echo=TRUE}
+  #read data into data frame
+  readActivity <- read.csv("C:/2016/Mike_Classes/Reproducible_Research/Working Directory/activity.csv")
+  #create data frame with summarized information, total steps per day, average steps per day and std steps per day. 
+  totalStepDay<- ddply(readActivity, c("date"), summarise,N= sum(steps),mean = mean(steps),sd   = sd(steps))
+  #calculation the mean total steps per day.
+  meanTotalSteps <- mean(totalStepDay$N,na.rm=TRUE)
+  #calculate the median total steps per day.
+  medianTotalSteps <- median(totalStepDay$N,na.rm=TRUE)
+  #Create histogram of total steps per day compared to frequency the steps were taken.
+```
+
+###Histogram - Total Steps taken each day.   Mean and Meadian steps taken each day.
+
+Create Histogram.
+
+Also, identify the meana and median total steps
+
+```{r hist1, echo=TRUE }
+  #Create Histogram
+  hist(totalStepDay$N,breaks=30,xlab="Total Steps Per Day", main="Histogram of Total Steps")
+  #add mean line to plot.
+  abline(v=meanTotalSteps,lwd = 1, lty = 4, col="red")
+  #add median line to plot.
+  abline(v=medianTotalSteps, lwd=1,lty=2,col="green")
+  #Answer question regarding mean and median steps taken each day.
+  print(paste("Mean Total Steps per day = ", round(meanTotalSteps,digits=2), "and median total steps per day = ", medianTotalSteps))
+
+```
+
+###What is the average activity pattern.
+
+```{r activity, echo=TRUE}
+totalStepsnoNA <- subset(totalStepDay,na.rm=TRUE)
+#Create a subset  and removed "NA"
+stepPerInterval <- subset(readActivity,readActivity$steps !="NA")
+#Summarized subset.
+stepPerInterval <- ddply(stepPerInterval,c("interval"),summarise,Nsteps=sum(steps),meanSteps=mean(steps),sdSteps=sd(steps))
+#Plot data.
+plot(stepPerInterval$interval,stepPerInterval$meanSteps, type="l", xlab="24 hour intervals (five minutes each)", ylab="Mean Steps per interval", main="Mean Steps Per Interval")
+
+#Determine which interval has the highest avaerge number of setps.
+stepPerInterval[stepPerInterval$meanSteps==max(stepPerInterval$meanSteps),]
+
+#Print answer.
+print(paste("Interval ", stepPerInterval[stepPerInterval$meanSteps==max(stepPerInterval$meanSteps),]$interval, "has the highest average number of steps of any interval"))
+
+```
+
+###Create a data set to account for the NAs.   I have decided to replace the NA with the average number of steps per interval.
+
+```{r replace NA, echo=TRUE}
+
+#identify total  number of NAs
+missingSteps <- nrow(readActivity[readActivity$steps=="NA",])
+
+#Report the total number of rows with NA.
+print(paste("Total rows with missing information", missingSteps))
+
+
+#Merge readActivity with average steps per interval, merged on interval
+intervalMerge <- merge(readActivity,stepPerInterval,by="interval")
+#Replace Na with average steps per interval.
+intervalMerge$steps <- ifelse(is.na(intervalMerge$steps),round(intervalMerge$meanSteps),intervalMerge$steps)
+#Create final dataset
+finalDataSet <- data.frame(intervalMerge$steps,intervalMerge$date,intervalMerge$interval)
+#Give the columns the same names as the original dataset.
+colnames(finalDataSet) <- c("steps","date","interval")
+
+#Summarize new dataset
+totalStepDayFinal <- ddply(finalDataSet,c("date"), summarise,N= sum(steps),mean = mean(steps),sd   = sd(steps))
+
+#Find mean of new data set.
+meanTotalStepsfinal <- mean(totalStepDayFinal$N)
+#Find median of new data set
+medianTotalStepsFinal <- median(totalStepDayFinal$N)
+
+#Create histogram of new dataset.  Include new mean and median line.
+
+hist(totalStepDayFinal$N,breaks=30,xlab="Total Steps Per Day", main="Histogram of Total Steps (NA replaced with mean steps per interval")
+abline(v=meanTotalStepsfinal,lwd = 1, lty = 4, col="red")
+abline(v=medianTotalStepsFinal, lwd=1,lty=2,col="green")
+```
+
+###Finally - Identify any differences in pattern between weekends and weekday by creating a two frame panel with two time series plots showing weekend and weekdays.
+
+```{r weekends, echo=TRUE}
+
+#For each date, assign a day of the week.
+finalDataSet$wkendDay <- weekdays(as.Date(finalDataSet$date))
+#For each day of the week, assigned either weekend or weekday.
+finalDataSet$wkend <- ifelse(finalDataSet$wkendDay %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),"Weekday","Weekend")
+
+
+#Summarized data on interval and new wkend value.
+stepPerIntervalDay <- ddply(finalDataSet,c("interval","wkend"),summarise,Nsteps=sum(steps),meanSteps=mean(steps),sdSteps=sd(steps))
+
+#Create plot.
+xyplot(meanSteps~interval | wkend,stepPerIntervalDay,type="l",layout=c(1,2),main="Interval Mean sorted by Weekend/Weekday",xlab="Interval",ylab="Mean Steps Per Interval")
+
+```
+
+#Impact of Imputted values
+
+```{r comparemean,echo=TRUE}
+
+print(paste("The mean value before imputting was ", round(meanTotalSteps,digits=2), " and the mean after imputting is ", round(meanTotalStepsfinal,digits=2), "which is a difference of ", round(meanTotalSteps-meanTotalStepsfinal ,digits=2) ))
+
+print(paste("The median value before imputting was ", round(medianTotalSteps,digits=2), " and the median after imputting is ", round(medianTotalStepsFinal,digits=2), "which is a difference of ", round(medianTotalSteps-medianTotalStepsFinal ,digits=2) ))
+
+
